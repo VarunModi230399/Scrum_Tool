@@ -6,11 +6,11 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+
+# import model modules here so they register on Base.metadata for autogenerate
+from src.modules.identity.infrastructure import models as identity_models  # noqa: F401
 from src.platform.config import get_settings
 from src.platform.db import Base
-
-# import model modules here so they register on Base.metadata for autogenerate,
-# e.g. from src.modules.identity.infrastructure import models as identity_models  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

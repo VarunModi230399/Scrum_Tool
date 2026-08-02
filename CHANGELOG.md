@@ -38,3 +38,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   - `.github/workflows/ci.yml`: lint + typecheck + build for web, lint +
     typecheck + test for api (against real Postgres/Redis service
     containers).
+- Identity module (Phase 1, first vertical slice): register/login/refresh/
+  logout/me, Google + Microsoft OAuth (authorization-code flow, gated behind
+  configured client credentials), organizations, workspaces, and
+  role-gated workspace membership management.
+  - `docs/DATABASE_SCHEMA.md`: added `refresh_tokens` table for server-side
+    revocation (logout, rotation-on-reuse breach detection).
+  - Domain/application/infrastructure/api layers under
+    `apps/api/src/modules/identity/`: JWT access+refresh tokens (rotation on
+    refresh; reusing a spent refresh token 401s), bcrypt password hashing
+    (used directly, not via the unmaintained `passlib` — passlib 1.7.4 is
+    incompatible with modern `bcrypt`'s stricter 72-byte input validation),
+    workspace RBAC (`admin/product_owner/scrum_master/developer/viewer`)
+    enforced via a `require_workspace_role` FastAPI dependency.
+  - Registering a user auto-creates a personal organization + workspace
+    (creator as admin) so individuals/startups can start working with zero
+    setup, per the PRD's target personas.
+  - First Alembic migration (`identity module: organizations, users, oauth
+    identities, workspaces, memberships, refresh tokens`); `docker-compose.yml`
+    gained a one-shot `migrate` service that both `api` and `worker` depend
+    on (`service_completed_successfully`) so a fresh `docker compose up`
+    applies migrations automatically.
+  - 15 integration tests (register/login/refresh-rotation/logout/me,
+    organization+workspace CRUD, membership add/update-role/remove,
+    authorization checks) against a real Postgres, all passing; CI now also
+    runs `alembic upgrade head` + `alembic check` to catch model/migration
+    drift.

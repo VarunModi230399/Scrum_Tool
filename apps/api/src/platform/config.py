@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
 
     cors_origins: list[str] = ["http://localhost:3000"]
+    api_base_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3000"
 
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None

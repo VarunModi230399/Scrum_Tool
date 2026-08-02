@@ -1,7 +1,8 @@
 # Enterprise AI Scrum & Project Management Platform
 
-Status: Phase 1 repo skeleton — Next.js frontend, FastAPI backend, Postgres,
-Redis, and Celery are wired up and run end-to-end. No product features yet.
+Status: Phase 1 — repo skeleton plus the identity module (auth, orgs,
+workspaces). Next.js frontend, FastAPI backend, Postgres, Redis, and Celery
+run end-to-end; migrations apply automatically.
 
 Start here:
 - [`docs/PRD.md`](docs/PRD.md) — vision, personas, phased roadmap
@@ -27,8 +28,26 @@ cp apps/api/.env.example apps/api/.env
 docker compose up -d --build
 ```
 
+This also runs a one-shot `migrate` service (`alembic upgrade head`) before
+`api`/`worker` start, so the database schema is always current.
+
 - Web: http://localhost:3000 (or `$WEB_PORT`)
 - API: http://localhost:8000 (or `$API_PORT`) — health check at `/healthz`, DB check at `/api/v1/health`
+
+Try the identity API:
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"a-strong-password","full_name":"Your Name"}'
+# -> { "data": { "user": {...}, "access_token": "...", "refresh_token": "..." } }
+
+curl http://localhost:8000/api/v1/auth/me -H "Authorization: Bearer <access_token>"
+```
+Registering also creates a personal organization + workspace with you as admin.
+
+Google/Microsoft login requires `GOOGLE_OAUTH_CLIENT_ID`/`_SECRET` or
+`MICROSOFT_OAUTH_CLIENT_ID`/`_SECRET` in `apps/api/.env` (unset by default —
+those endpoints 422 until configured with real OAuth app credentials).
 
 ## Running services individually
 
@@ -43,7 +62,10 @@ npm run dev
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env
+alembic upgrade head
 uvicorn src.main:app --reload
 ```
 
-Run the API test suite: `pytest -q`. Lint/typecheck: `ruff check .` and `mypy src`.
+Run the API test suite: `pytest -q` (spins up/tears down its own tables on
+whatever `DATABASE_URL` points to — point it at a real Postgres, e.g. via
+`docker compose up -d postgres`). Lint/typecheck: `ruff check .` and `mypy src`.

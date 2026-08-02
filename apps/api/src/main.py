@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from src.modules.identity.api.router import router as identity_router
 from src.platform.config import get_settings
 from src.platform.health import router as health_router
 from src.platform.logging import configure_logging
@@ -30,6 +31,4 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 
 
 app.include_router(health_router)
-
-# Module routers are mounted here as each module's API layer is implemented,
-# e.g. app.include_router(identity_router, prefix="/api/v1")
+app.include_router(identity_router)

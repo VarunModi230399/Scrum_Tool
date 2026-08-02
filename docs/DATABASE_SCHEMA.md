@@ -50,6 +50,15 @@ workspace_memberships
   role            text NOT NULL   -- 'admin' | 'product_owner' | 'scrum_master' | 'developer' | 'viewer'
   created_at      timestamptz NOT NULL DEFAULT now()
   UNIQUE (workspace_id, user_id)
+
+refresh_tokens                      -- enables server-side revocation (logout, compromise response)
+  id              uuid PK
+  user_id         uuid FK -> users.id
+  token_hash      text NOT NULL UNIQUE   -- SHA-256 of the token; raw token never stored
+  expires_at      timestamptz NOT NULL
+  revoked_at      timestamptz NULL
+  created_at      timestamptz NOT NULL DEFAULT now()
+  INDEX idx_refresh_tokens_user (user_id)
 ```
 
 RBAC roles are also assignable at `project_id` scope (Phase 1) via an

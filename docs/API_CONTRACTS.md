@@ -11,31 +11,41 @@ a Phase 3 upgrade once dataset sizes justify it — not built speculatively).
 
 ---
 
-## 1. Auth
+## 1. Auth — implemented
 
 ```
 POST   /api/v1/auth/register              { email, password, full_name }
-POST   /api/v1/auth/login                 { email, password } -> { access_token, refresh_token }
-POST   /api/v1/auth/refresh               { refresh_token } -> { access_token }
-POST   /api/v1/auth/logout
-GET    /api/v1/auth/oauth/{provider}/start    provider: google | microsoft
-GET    /api/v1/auth/oauth/{provider}/callback
+                                           -> { user, access_token, refresh_token }
+                                           registering also creates a personal organization
+                                           + workspace with the caller as admin (see §2)
+POST   /api/v1/auth/login                 { email, password } -> { user, access_token, refresh_token }
+POST   /api/v1/auth/refresh               { refresh_token } -> { access_token, refresh_token }
+                                           rotates the refresh token: the presented one is
+                                           revoked, reuse returns 401 (breach detection)
+POST   /api/v1/auth/logout                { refresh_token } -> 204, revokes it
+GET    /api/v1/auth/oauth/{provider}/start    provider: google | microsoft -> 302 redirect
+GET    /api/v1/auth/oauth/{provider}/callback -> 302 redirect to
+                                           `{FRONTEND_URL}/auth/callback#access_token=...&refresh_token=...`
+                                           (tokens in the URL fragment, never sent to the server/logs)
 GET    /api/v1/auth/me                    -> current user profile
 ```
 
-## 2. Organizations & Workspaces
+OAuth requires `GOOGLE_OAUTH_CLIENT_ID`/`_SECRET` or `MICROSOFT_OAUTH_CLIENT_ID`/`_SECRET`
+configured server-side; unconfigured providers return `VALIDATION_ERROR`.
+
+## 2. Organizations & Workspaces — implemented
 
 ```
-GET    /api/v1/organizations/{org_id}
+GET    /api/v1/organizations/{org_id}                      requires membership in one of its workspaces
 POST   /api/v1/organizations                { name }
-GET    /api/v1/organizations/{org_id}/workspaces
-POST   /api/v1/organizations/{org_id}/workspaces   { name, slug }
-GET    /api/v1/workspaces/{workspace_id}
-PATCH  /api/v1/workspaces/{workspace_id}
-GET    /api/v1/workspaces/{workspace_id}/members
-POST   /api/v1/workspaces/{workspace_id}/members    { user_id, role }
-PATCH  /api/v1/workspaces/{workspace_id}/members/{user_id}   { role }
-DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}
+GET    /api/v1/organizations/{org_id}/workspaces            only workspaces the caller is a member of
+POST   /api/v1/organizations/{org_id}/workspaces   { name }  creator becomes admin
+GET    /api/v1/workspaces/{workspace_id}                     requires membership (any role)
+PATCH  /api/v1/workspaces/{workspace_id}     { name }         admin only
+GET    /api/v1/workspaces/{workspace_id}/members              requires membership (any role)
+POST   /api/v1/workspaces/{workspace_id}/members    { user_id, role }   admin only
+PATCH  /api/v1/workspaces/{workspace_id}/members/{user_id}   { role }   admin only
+DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}    admin only; cannot remove self
 ```
 
 ## 3. Projects

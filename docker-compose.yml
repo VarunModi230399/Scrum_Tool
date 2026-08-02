@@ -25,6 +25,18 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build:
+      context: ./apps/api
+    command: alembic upgrade head
+    env_file:
+      - ./apps/api/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://scrum:scrum@postgres:5432/scrum_tool
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: ./apps/api
@@ -40,6 +52,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./apps/api:/app
 
@@ -57,6 +71,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - ./apps/api:/app
 
