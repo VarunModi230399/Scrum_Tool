@@ -1,0 +1,166 @@
+# API Contracts — v1
+
+**Status:** Living document. FastAPI's generated OpenAPI schema is the
+executable source of truth once code exists; this doc is the design-time
+contract that precedes it and must stay in sync.
+
+Base path: `/api/v1`
+Auth: `Authorization: Bearer <JWT>` unless noted. All list endpoints support
+`?page=&page_size=` cursor-free pagination for Phase 1 (cursor pagination is
+a Phase 3 upgrade once dataset sizes justify it — not built speculatively).
+
+---
+
+## 1. Auth
+
+```
+POST   /api/v1/auth/register              { email, password, full_name }
+POST   /api/v1/auth/login                 { email, password } -> { access_token, refresh_token }
+POST   /api/v1/auth/refresh               { refresh_token } -> { access_token }
+POST   /api/v1/auth/logout
+GET    /api/v1/auth/oauth/{provider}/start    provider: google | microsoft
+GET    /api/v1/auth/oauth/{provider}/callback
+GET    /api/v1/auth/me                    -> current user profile
+```
+
+## 2. Organizations & Workspaces
+
+```
+GET    /api/v1/organizations/{org_id}
+POST   /api/v1/organizations                { name }
+GET    /api/v1/organizations/{org_id}/workspaces
+POST   /api/v1/organizations/{org_id}/workspaces   { name, slug }
+GET    /api/v1/workspaces/{workspace_id}
+PATCH  /api/v1/workspaces/{workspace_id}
+GET    /api/v1/workspaces/{workspace_id}/members
+POST   /api/v1/workspaces/{workspace_id}/members    { user_id, role }
+PATCH  /api/v1/workspaces/{workspace_id}/members/{user_id}   { role }
+DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}
+```
+
+## 3. Projects
+
+```
+GET    /api/v1/workspaces/{workspace_id}/projects
+POST   /api/v1/workspaces/{workspace_id}/projects   { key, name, description, portfolio_id? }
+GET    /api/v1/projects/{project_id}
+PATCH  /api/v1/projects/{project_id}
+DELETE /api/v1/projects/{project_id}                (soft delete -> status=archived)
+
+GET    /api/v1/projects/{project_id}/milestones
+POST   /api/v1/projects/{project_id}/milestones     { name, due_date, description }
+PATCH  /api/v1/milestones/{milestone_id}
+```
+
+## 4. Work Items
+
+```
+GET    /api/v1/projects/{project_id}/work-items
+  query: ?type=&status=&owner_id=&parent_id=&view=kanban|list|table
+POST   /api/v1/projects/{project_id}/work-items
+  { type, parent_id?, milestone_id?, title, description, priority, ... }
+GET    /api/v1/work-items/{id}
+PATCH  /api/v1/work-items/{id}
+DELETE /api/v1/work-items/{id}
+
+GET    /api/v1/work-items/{id}/children
+GET    /api/v1/work-items/{id}/ancestors
+PATCH  /api/v1/work-items/{id}/move          { new_parent_id, position }
+PATCH  /api/v1/work-items/{id}/progress-override   { value | null }
+
+GET    /api/v1/work-items/{id}/dependencies
+POST   /api/v1/work-items/{id}/dependencies   { depends_on_id, type }
+DELETE /api/v1/work-items/{id}/dependencies/{dependency_id}
+
+POST   /api/v1/work-items/{id}/time-logs      { hours, logged_date, note }
+GET    /api/v1/work-items/{id}/time-logs
+
+GET    /api/v1/work-items/{id}/comments
+POST   /api/v1/work-items/{id}/comments       { body }   (entity_type=work_item, shared endpoint impl)
+
+POST   /api/v1/work-items/{id}/attachments    (multipart)
+GET    /api/v1/work-items/{id}/attachments
+```
+
+## 5. Requirements
+
+```
+GET    /api/v1/projects/{project_id}/requirements
+  query: ?type=&status=&owner_id=
+POST   /api/v1/projects/{project_id}/requirements
+  { type, title, description, acceptance_criteria, priority, due_date }
+GET    /api/v1/requirements/{id}
+PATCH  /api/v1/requirements/{id}                (writes a new requirement_versions row)
+DELETE /api/v1/requirements/{id}
+
+GET    /api/v1/requirements/{id}/versions
+GET    /api/v1/requirements/{id}/versions/{version_number}
+
+GET    /api/v1/requirements/{id}/relations
+POST   /api/v1/requirements/{id}/relations      { related_requirement_id, relation_type }
+
+GET    /api/v1/requirements/{id}/work-items      (traceability: linked work items)
+POST   /api/v1/requirements/{id}/work-items      { work_item_id }
+DELETE /api/v1/requirements/{id}/work-items/{work_item_id}
+
+GET    /api/v1/work-items/{id}/requirements       (reverse traceability lookup)
+
+GET    /api/v1/requirements/{id}/comments
+POST   /api/v1/requirements/{id}/comments
+POST   /api/v1/requirements/{id}/attachments
+```
+
+## 6. Labels, Tags, Custom Fields
+
+```
+GET    /api/v1/workspaces/{workspace_id}/labels
+POST   /api/v1/workspaces/{workspace_id}/labels     { name, color }
+GET    /api/v1/workspaces/{workspace_id}/tags
+POST   /api/v1/workspaces/{workspace_id}/tags       { name }
+
+PUT    /api/v1/work-items/{id}/labels               { label_ids: [...] }
+PUT    /api/v1/work-items/{id}/tags                 { tag_ids: [...] }
+
+GET    /api/v1/projects/{project_id}/custom-fields
+POST   /api/v1/projects/{project_id}/custom-fields  { name, field_type, options? }
+PUT    /api/v1/work-items/{id}/custom-fields/{field_id}   { value }
+```
+
+## 7. Response Conventions
+
+- Success: `{ "data": ..., "meta": {...}? }`
+- List: `{ "data": [...], "meta": { "page", "page_size", "total" } }`
+- Error: `{ "error": { "code": "VALIDATION_ERROR", "message": "...", "details": {...}? } }`
+- All timestamps ISO 8601 UTC.
+- All IDs are UUIDv4 strings.
+
+## 8. Standard Error Codes
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `UNAUTHENTICATED` | 401 | Missing/invalid token |
+| `FORBIDDEN` | 403 | Authenticated but lacks permission for this scope |
+| `NOT_FOUND` | 404 | Entity doesn't exist or isn't visible to caller |
+| `VALIDATION_ERROR` | 422 | Request body/query failed schema validation |
+| `CONFLICT` | 409 | Uniqueness or state conflict (e.g. duplicate slug) |
+| `RATE_LIMITED` | 429 | Too many requests |
+
+## 9. WebSocket Channels (real-time updates)
+
+```
+WS /api/v1/ws/projects/{project_id}
+  Server -> Client events:
+    work_item.created | work_item.updated | work_item.moved | work_item.deleted
+    requirement.created | requirement.updated
+    comment.created
+    progress.recalculated  { entity_type, entity_id, new_progress }
+```
+
+## 10. Deferred to Later Phases
+
+- `/sprints`, `/backlog`, `/standups` — Phase 2
+- `/dashboard/executive` — Phase 3
+- `/ai/*` (generate-epics, detect-duplicates, impact-analysis) — Phase 4
+- `/briefings/*` — Phase 5
+- `/automation-rules/*` — Phase 6
+- `/integrations/*` — Phase 6
