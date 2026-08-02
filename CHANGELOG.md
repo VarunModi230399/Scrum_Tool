@@ -64,3 +64,42 @@ follows [Keep a Changelog](https://keepachangelog.com/).
     authorization checks) against a real Postgres, all passing; CI now also
     runs `alembic upgrade head` + `alembic check` to catch model/migration
     drift.
+- Projects & Work Items module (Phase 1, second vertical slice): the core
+  hierarchy — Epic → Feature → Story → Task → Subtask → Checklist Item —
+  with unlimited nesting, dependencies, and automatic progress rollup.
+  - Modeled as a single `work_items` table with a `type` discriminator and a
+    materialized `path` column (dot-delimited ancestor UUIDs), exactly as
+    specified in ARCHITECTURE.md §7 — `LIKE 'prefix.%'` gives O(1) descendant
+    lookups, splitting `path` gives ancestors, both backed by a
+    `text_pattern_ops` index.
+  - Full CRUD, `children`/`ancestors` lookups, `move` (reparent — rejects
+    moving into self, into one's own descendant, or across projects, and
+    updates the whole subtree's `path`/`depth` in one pass), and
+    `dependencies` (`blocks`/`relates_to`; rejects self-deps, duplicates, and
+    the direct reverse edge — full transitive cycle detection deferred to
+    the Phase 2 Dependency Graph view).
+  - `ProgressRollupService` (`modules/projects/application/progress.py`):
+    weighted-average rollup by `story_points` (equal-weight fallback), leaf
+    progress derived from status, `progress_override` cascades its value
+    upward without being overwritten. Implemented **synchronously** rather
+    than the async Celery cascade ARCHITECTURE.md originally sketched —
+    simpler, directly testable, and tree depth doesn't yet justify the async
+    complexity; see ARCHITECTURE.md §8 for the reasoning and the revisit
+    condition.
+  - Deleting a work item cascades to its entire subtree (deleting an Epic
+    deletes its Stories/Tasks) rather than orphaning children or blocking on
+    the FK.
+  - Projects module (`modules/projects/`): project CRUD scoped to a
+    workspace, admin/product-owner-gated rename/archive. Cross-module
+    workspace-RBAC coupling is called out and justified in ARCHITECTURE.md §3.
+  - Second Alembic migration (`projects module: projects, work_items,
+    work_item_dependencies`).
+  - 28 total integration tests now passing (13 new: hierarchy, move/cycle
+    rejection, cross-project rejection, dependency lifecycle, and four
+    progress-rollup scenarios including the override-cascade case), verified
+    live end-to-end via `docker compose` (status→done on a story correctly
+    rolled its parent Epic to 100%).
+  - **Deferred** (documented in API_CONTRACTS.md §3–4, need shared
+    polymorphic infra not yet built): milestones, comments, attachments,
+    labels/tags, custom fields, time logs, and board-position ordering on
+    move.

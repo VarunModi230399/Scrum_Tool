@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.modules.identity.api.router import router as identity_router
+from src.modules.projects.api.router import router as projects_router
 from src.platform.config import get_settings
 from src.platform.health import router as health_router
 from src.platform.logging import configure_logging
@@ -32,3 +33,4 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 
 app.include_router(health_router)
 app.include_router(identity_router)
+app.include_router(projects_router)

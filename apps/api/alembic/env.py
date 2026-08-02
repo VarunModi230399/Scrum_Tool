@@ -9,6 +9,7 @@ from alembic import context
 
 # import model modules here so they register on Base.metadata for autogenerate
 from src.modules.identity.infrastructure import models as identity_models  # noqa: F401
+from src.modules.projects.infrastructure import models as projects_models  # noqa: F401
 from src.platform.config import get_settings
 from src.platform.db import Base
 

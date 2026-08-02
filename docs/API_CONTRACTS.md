@@ -48,49 +48,58 @@ PATCH  /api/v1/workspaces/{workspace_id}/members/{user_id}   { role }   admin on
 DELETE /api/v1/workspaces/{workspace_id}/members/{user_id}    admin only; cannot remove self
 ```
 
-## 3. Projects
+## 3. Projects — implemented (milestones deferred)
 
 ```
-GET    /api/v1/workspaces/{workspace_id}/projects
-POST   /api/v1/workspaces/{workspace_id}/projects   { key, name, description, portfolio_id? }
-GET    /api/v1/projects/{project_id}
-PATCH  /api/v1/projects/{project_id}
-DELETE /api/v1/projects/{project_id}                (soft delete -> status=archived)
-
-GET    /api/v1/projects/{project_id}/milestones
-POST   /api/v1/projects/{project_id}/milestones     { name, due_date, description }
-PATCH  /api/v1/milestones/{milestone_id}
+GET    /api/v1/workspaces/{workspace_id}/projects            any workspace member
+POST   /api/v1/workspaces/{workspace_id}/projects   { key, name, description? }   any member; key is
+                                                     upper-cased and must be unique within the workspace
+GET    /api/v1/projects/{project_id}                          any workspace member
+PATCH  /api/v1/projects/{project_id}   { name?, description?, status? }   admin/product_owner only
+DELETE /api/v1/projects/{project_id}                (soft delete -> status=archived)   admin/product_owner only
 ```
 
-## 4. Work Items
+Deferred: `portfolio_id` on create, and the `/milestones` sub-resource
+entirely (`milestone_id` exists as a nullable, unused column reservation on
+`work_items` — see DATABASE_SCHEMA.md — but there's no Milestone entity yet).
+
+## 4. Work Items — implemented (see deferrals below)
 
 ```
 GET    /api/v1/projects/{project_id}/work-items
-  query: ?type=&status=&owner_id=&parent_id=&view=kanban|list|table
+  query: ?type=&status=&owner_id=&parent_id=          any workspace member
 POST   /api/v1/projects/{project_id}/work-items
-  { type, parent_id?, milestone_id?, title, description, priority, ... }
-GET    /api/v1/work-items/{id}
-PATCH  /api/v1/work-items/{id}
-DELETE /api/v1/work-items/{id}
+  { type, parent_id?, title, description?, acceptance_criteria?, priority?,
+    risk?, story_points?, estimated_hours?, start_date?, due_date?, owner_id?,
+    reviewer_id? }                                     any workspace member
+GET    /api/v1/work-items/{work_item_id}                     any workspace member
+PATCH  /api/v1/work-items/{work_item_id}                     any workspace member
+DELETE /api/v1/work-items/{work_item_id}            any workspace member; cascades to the entire subtree
 
-GET    /api/v1/work-items/{id}/children
-GET    /api/v1/work-items/{id}/ancestors
-PATCH  /api/v1/work-items/{id}/move          { new_parent_id, position }
-PATCH  /api/v1/work-items/{id}/progress-override   { value | null }
+GET    /api/v1/work-items/{work_item_id}/children
+GET    /api/v1/work-items/{work_item_id}/ancestors
+PATCH  /api/v1/work-items/{work_item_id}/move          { new_parent_id }
+  rejects moving into self, into a descendant (cycle), or across projects
+PATCH  /api/v1/work-items/{work_item_id}/progress-override   { value: 0-100 | null }
 
-GET    /api/v1/work-items/{id}/dependencies
-POST   /api/v1/work-items/{id}/dependencies   { depends_on_id, type }
-DELETE /api/v1/work-items/{id}/dependencies/{dependency_id}
-
-POST   /api/v1/work-items/{id}/time-logs      { hours, logged_date, note }
-GET    /api/v1/work-items/{id}/time-logs
-
-GET    /api/v1/work-items/{id}/comments
-POST   /api/v1/work-items/{id}/comments       { body }   (entity_type=work_item, shared endpoint impl)
-
-POST   /api/v1/work-items/{id}/attachments    (multipart)
-GET    /api/v1/work-items/{id}/attachments
+GET    /api/v1/work-items/{work_item_id}/dependencies
+POST   /api/v1/work-items/{work_item_id}/dependencies   { depends_on_id, type: blocks|relates_to }
+  rejects self-dependency and the direct reverse edge (A→B blocks B→A); full
+  transitive cycle detection deferred to the Dependency Graph view (Phase 2)
+DELETE /api/v1/work-items/{work_item_id}/dependencies/{dependency_id}
 ```
+
+Every endpoint above requires the caller to be a member of the work item's/
+project's workspace (any role) unless noted otherwise.
+
+**Deferred to a follow-up increment** (need shared polymorphic
+comment/attachment infrastructure that doesn't exist yet — see
+DATABASE_SCHEMA.md §5): `position` (board-column ordering) is stored but not
+yet settable via the API; `time-logs`, `comments`, `attachments`, `labels`/
+`tags`, and `custom-fields` sub-resources are not implemented.
+
+`move`'s `position` parameter (board-column ordering within the new parent)
+is not yet implemented — moves always land at the default position.
 
 ## 5. Requirements
 

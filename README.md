@@ -1,8 +1,9 @@
 # Enterprise AI Scrum & Project Management Platform
 
-Status: Phase 1 — repo skeleton plus the identity module (auth, orgs,
-workspaces). Next.js frontend, FastAPI backend, Postgres, Redis, and Celery
-run end-to-end; migrations apply automatically.
+Status: Phase 1 — repo skeleton, identity (auth, orgs, workspaces), and the
+Projects/Work Items hierarchy (Epic→...→Checklist, dependencies, automatic
+progress rollup) are built. Next.js frontend, FastAPI backend, Postgres,
+Redis, and Celery run end-to-end; migrations apply automatically.
 
 Start here:
 - [`docs/PRD.md`](docs/PRD.md) — vision, personas, phased roadmap

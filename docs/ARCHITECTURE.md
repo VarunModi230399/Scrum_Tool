@@ -95,6 +95,17 @@ apps/api/
 - Modules communicate through application-layer interfaces or domain events — never by importing another module's `infrastructure/`.
 - Repository Pattern + Dependency Injection throughout (FastAPI `Depends` wiring to a DI container).
 
+**Accepted exception — cross-module workspace authorization:** the `projects`
+module's API layer (`modules/projects/api/dependencies.py`) imports
+`SqlAlchemyWorkspaceMembershipRepository` directly from `modules/identity/infrastructure`
+to resolve "does this user have role X in this work item/project's workspace."
+This is API-layer-to-infrastructure coupling, which the rule above forbids in
+general — accepted here because workspace RBAC is genuinely owned by identity
+and every other module needs the same check. If a third module needs it
+(`requirements` will), extract a shared `AuthorizationService` port instead of
+a third copy-pasted import; two call sites is a coincidence, three is a
+pattern.
+
 ## 4. Frontend Architecture
 
 ```
@@ -155,18 +166,27 @@ the `work_items` type enum. Full schema in [`DATABASE_SCHEMA.md`](DATABASE_SCHEM
 
 ## 8. Progress Rollup
 
-Rollup is computed bottom-up on write, not on read:
-- On a work item status/progress change, a domain event (`WorkItemProgressChanged`)
-  fires.
-- An application-layer handler recomputes the immediate parent's progress
-  (weighted by children's story points if present, else equal weight).
-- This cascades up the `parent_id` chain to the project root.
-- Recomputation is synchronous for the immediate parent (fast, needed for UI
-  responsiveness) and cascades further up via a Celery task to avoid blocking
-  the request on deep trees.
-- `progress_override` (nullable float) on `work_items`: when set, automatic
-  rollup skips that node's computed value but still cascades upward using the
-  override as the effective value.
+Rollup is computed bottom-up on write, not on read, and — as implemented —
+**fully synchronously within the request**, not via the async Celery cascade
+originally sketched here. `ProgressRollupService.recompute()`
+(`modules/projects/application/progress.py`) walks from the changed work item
+up through `parent_id` to the root, recomputing each ancestor's progress as
+it goes:
+- A work item with children: weighted average of children's *effective*
+  progress (`progress_override` if set, else `progress`), weighted by
+  `story_points` (equal weight if unset).
+- A leaf work item (no children): 100 if `status == DONE`, else 0.
+- `progress_override`: when set, rollup skips recomputing that node's own
+  `progress` column, but the override value is still what gets used as its
+  contribution to the parent's average — so the override cascades upward
+  exactly like a computed value would.
+
+This was simplified from the async-cascade design during Phase 1 build-out:
+a synchronous walk is simpler to reason about and — critically — testable in
+a normal `pytest` run without a live Celery worker, and tree depth in
+practice is small enough that the cost is negligible. Revisit with an async
+cascade (using the Celery infra already wired up) only if/when real trees get
+deep or wide enough for this to show up in latency — not speculatively.
 
 ## 9. Requirements vs. Work Items — Traceability Model
 

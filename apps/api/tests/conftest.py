@@ -14,7 +14,10 @@ from sqlalchemy.ext.asyncio import (
 
 from src.main import app
 from src.modules.identity.infrastructure import (
-    models,  # noqa: F401  (registers tables on Base.metadata)
+    models as identity_models,  # noqa: F401  (registers tables on Base.metadata)
+)
+from src.modules.projects.infrastructure import (
+    models as projects_models,  # noqa: F401  (registers tables on Base.metadata)
 )
 from src.platform.config import get_settings
 from src.platform.db import Base, get_db
