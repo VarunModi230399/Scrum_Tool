@@ -31,3 +31,6 @@ venv/
 
 # Docker
 docker-compose.override.yml
+
+# Uploaded files (local disk storage backend)
+uploads/

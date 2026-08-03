@@ -103,8 +103,10 @@ class CreateWorkItemUseCase:
             reviewer_id=reviewer_id,
             created_by=created_by,
         )
-        if parent is not None:
-            await self._rollup.recompute(parent)
+        # Recompute from the new item itself: if it has a parent, this cascades
+        # up through it; if it's a root item, this goes straight to updating
+        # the project's progress with the new item factored in.
+        await self._rollup.recompute(work_item)
         return work_item
 
 

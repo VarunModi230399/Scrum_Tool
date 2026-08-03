@@ -91,3 +91,12 @@ class AddMemberRequest(BaseModel):
 
 class UpdateMemberRoleRequest(BaseModel):
     role: WorkspaceRole
+
+
+class MyWorkspaceOut(BaseModel):
+    id: UUID
+    organization_id: UUID
+    organization_name: str
+    name: str
+    slug: str
+    role: WorkspaceRole

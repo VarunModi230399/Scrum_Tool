@@ -1,3 +1,4 @@
+import pytest
 from httpx import AsyncClient
 
 from tests.integration.helpers import create_org_and_workspace, create_project, register_user
@@ -107,6 +108,42 @@ async def test_progress_rolls_up_weighted_by_story_points(client: AsyncClient) -
         f"/api/v1/work-items/{s2['id']}", json={"status": "done"}, headers=admin["headers"]
     )
     assert await epic_progress() == 100.0
+
+
+async def test_project_progress_rolls_up_from_root_work_items(client: AsyncClient) -> None:
+    admin, project_id = await _setup_project(client)
+
+    async def project_progress() -> float:
+        r = await client.get(f"/api/v1/projects/{project_id}", headers=admin["headers"])
+        return r.json()["data"]["progress"]
+
+    assert await project_progress() == 0
+
+    task_a = await _create_work_item(
+        client, admin["headers"], project_id, title="A", story_points=1
+    )
+    await _create_work_item(client, admin["headers"], project_id, title="B", story_points=1)
+    assert await project_progress() == 0
+
+    await client.patch(
+        f"/api/v1/work-items/{task_a['id']}", json={"status": "done"}, headers=admin["headers"]
+    )
+    assert await project_progress() == 50.0
+
+    # adding a new root item recomputes the project immediately, at create
+    # time, without needing a status change on anything to trigger it
+    await _create_work_item(client, admin["headers"], project_id, title="C", story_points=1)
+    # progress is stored as numeric(5,2), so this rounds to 33.33 rather than 33.333...
+    assert await project_progress() == pytest.approx(100 / 3, abs=0.01)
+
+    # nested work items shouldn't be double-counted at the project level — only
+    # root items (parent_id is None) feed the project's progress
+    epic = await _create_work_item(client, admin["headers"], project_id, type="epic", title="Epic")
+    await _create_work_item(
+        client, admin["headers"], project_id, title="Nested", parent_id=epic["id"], story_points=1
+    )
+    # 4 root items now (A done=100, B/C todo=0, Epic todo=0): 100/4
+    assert await project_progress() == 25.0
 
 
 async def test_progress_override_cascades_effective_value(client: AsyncClient) -> None:

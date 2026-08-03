@@ -45,6 +45,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://scrum:scrum@postgres:5432/scrum_tool
       REDIS_URL: redis://redis:6379/0
+      # Derived from the same host-port vars as the `ports:` mappings below, so
+      # remapping WEB_PORT/API_PORT (e.g. to dodge a local port clash) doesn't
+      # also require hand-editing apps/api/.env's CORS/URL settings to match.
+      CORS_ORIGINS: '["http://localhost:${WEB_PORT:-3000}"]'
+      API_BASE_URL: http://localhost:${API_PORT:-8000}
+      FRONTEND_URL: http://localhost:${WEB_PORT:-3000}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -79,8 +85,8 @@ services:
   web:
     build:
       context: ./apps/web
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:

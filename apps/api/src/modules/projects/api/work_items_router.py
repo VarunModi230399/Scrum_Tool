@@ -1,8 +1,16 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.modules.collaboration.api.schemas import AddCommentRequest, AttachmentOut, CommentOut
+from src.modules.collaboration.application.use_cases import AddAttachmentUseCase, AddCommentUseCase
+from src.modules.collaboration.domain.entities import EntityType
+from src.modules.collaboration.infrastructure.repositories import (
+    SqlAlchemyAttachmentRepository,
+    SqlAlchemyCommentRepository,
+)
+from src.modules.collaboration.infrastructure.storage import save_upload
 from src.modules.identity.domain.entities import User, WorkspaceRole
 from src.modules.projects.api.dependencies import require_project_role, require_work_item_role
 from src.modules.projects.api.schemas import (
@@ -26,6 +34,7 @@ from src.modules.projects.application.use_cases import (
 )
 from src.modules.projects.domain.entities import WorkItemStatus, WorkItemType
 from src.modules.projects.infrastructure.repositories import (
+    SqlAlchemyProjectRepository,
     SqlAlchemyWorkItemDependencyRepository,
     SqlAlchemyWorkItemRepository,
 )
@@ -65,7 +74,9 @@ async def create_work_item(
     db: AsyncSession = Depends(get_db),
 ) -> ItemResponse[WorkItemOut]:
     work_item_repo = SqlAlchemyWorkItemRepository(db)
-    use_case = CreateWorkItemUseCase(work_item_repo, ProgressRollupService(work_item_repo))
+    use_case = CreateWorkItemUseCase(
+        work_item_repo, ProgressRollupService(work_item_repo, SqlAlchemyProjectRepository(db))
+    )
     work_item = await use_case.execute(
         project_id=project_id,
         parent_id=body.parent_id,
@@ -112,7 +123,9 @@ async def update_work_item(
             fields[key] = fields[key].value
 
     work_item_repo = SqlAlchemyWorkItemRepository(db)
-    use_case = UpdateWorkItemUseCase(work_item_repo, ProgressRollupService(work_item_repo))
+    use_case = UpdateWorkItemUseCase(
+        work_item_repo, ProgressRollupService(work_item_repo, SqlAlchemyProjectRepository(db))
+    )
     work_item = await use_case.execute(work_item_id, fields)
     await db.commit()
     return ItemResponse(data=WorkItemOut(**work_item.__dict__))
@@ -125,7 +138,9 @@ async def delete_work_item(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     work_item_repo = SqlAlchemyWorkItemRepository(db)
-    use_case = DeleteWorkItemUseCase(work_item_repo, ProgressRollupService(work_item_repo))
+    use_case = DeleteWorkItemUseCase(
+        work_item_repo, ProgressRollupService(work_item_repo, SqlAlchemyProjectRepository(db))
+    )
     await use_case.execute(work_item_id)
     await db.commit()
 
@@ -164,7 +179,9 @@ async def move_work_item(
     db: AsyncSession = Depends(get_db),
 ) -> ItemResponse[WorkItemOut]:
     work_item_repo = SqlAlchemyWorkItemRepository(db)
-    use_case = MoveWorkItemUseCase(work_item_repo, ProgressRollupService(work_item_repo))
+    use_case = MoveWorkItemUseCase(
+        work_item_repo, ProgressRollupService(work_item_repo, SqlAlchemyProjectRepository(db))
+    )
     work_item = await use_case.execute(work_item_id, body.new_parent_id)
     await db.commit()
     return ItemResponse(data=WorkItemOut(**work_item.__dict__))
@@ -181,7 +198,9 @@ async def set_progress_override(
     db: AsyncSession = Depends(get_db),
 ) -> ItemResponse[WorkItemOut]:
     work_item_repo = SqlAlchemyWorkItemRepository(db)
-    use_case = SetProgressOverrideUseCase(work_item_repo, ProgressRollupService(work_item_repo))
+    use_case = SetProgressOverrideUseCase(
+        work_item_repo, ProgressRollupService(work_item_repo, SqlAlchemyProjectRepository(db))
+    )
     work_item = await use_case.execute(work_item_id, body.value)
     await db.commit()
     return ItemResponse(data=WorkItemOut(**work_item.__dict__))
@@ -232,3 +251,79 @@ async def remove_dependency(
     use_case = RemoveDependencyUseCase(SqlAlchemyWorkItemDependencyRepository(db))
     await use_case.execute(dependency_id)
     await db.commit()
+
+
+@router.get("/api/v1/work-items/{work_item_id}/comments", response_model=ListResponse[CommentOut])
+async def list_work_item_comments(
+    work_item_id: UUID,
+    current_user: User = Depends(require_work_item_role(*WorkspaceRole)),
+    db: AsyncSession = Depends(get_db),
+) -> ListResponse[CommentOut]:
+    comments = await SqlAlchemyCommentRepository(db).list_for_entity(
+        EntityType.WORK_ITEM, work_item_id
+    )
+    data = [CommentOut(**c.__dict__) for c in comments]
+    return ListResponse(data=data, meta=PageMeta(page=1, page_size=len(data), total=len(data)))
+
+
+@router.post(
+    "/api/v1/work-items/{work_item_id}/comments",
+    response_model=ItemResponse[CommentOut],
+    status_code=201,
+)
+async def add_work_item_comment(
+    work_item_id: UUID,
+    body: AddCommentRequest,
+    current_user: User = Depends(require_work_item_role(*WorkspaceRole)),
+    db: AsyncSession = Depends(get_db),
+) -> ItemResponse[CommentOut]:
+    use_case = AddCommentUseCase(SqlAlchemyCommentRepository(db))
+    comment = await use_case.execute(
+        entity_type=EntityType.WORK_ITEM,
+        entity_id=work_item_id,
+        author_id=current_user.id,
+        body=body.body,
+    )
+    await db.commit()
+    return ItemResponse(data=CommentOut(**comment.__dict__))
+
+
+@router.get(
+    "/api/v1/work-items/{work_item_id}/attachments", response_model=ListResponse[AttachmentOut]
+)
+async def list_work_item_attachments(
+    work_item_id: UUID,
+    current_user: User = Depends(require_work_item_role(*WorkspaceRole)),
+    db: AsyncSession = Depends(get_db),
+) -> ListResponse[AttachmentOut]:
+    attachments = await SqlAlchemyAttachmentRepository(db).list_for_entity(
+        EntityType.WORK_ITEM, work_item_id
+    )
+    data = [AttachmentOut(**a.__dict__) for a in attachments]
+    return ListResponse(data=data, meta=PageMeta(page=1, page_size=len(data), total=len(data)))
+
+
+@router.post(
+    "/api/v1/work-items/{work_item_id}/attachments",
+    response_model=ItemResponse[AttachmentOut],
+    status_code=201,
+)
+async def add_work_item_attachment(
+    work_item_id: UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_work_item_role(*WorkspaceRole)),
+    db: AsyncSession = Depends(get_db),
+) -> ItemResponse[AttachmentOut]:
+    file_url, file_name, file_size_bytes = await save_upload(file)
+    use_case = AddAttachmentUseCase(SqlAlchemyAttachmentRepository(db))
+    attachment = await use_case.execute(
+        entity_type=EntityType.WORK_ITEM,
+        entity_id=work_item_id,
+        uploaded_by=current_user.id,
+        file_name=file_name,
+        file_url=file_url,
+        file_size_bytes=file_size_bytes,
+        mime_type=file.content_type or "application/octet-stream",
+    )
+    await db.commit()
+    return ItemResponse(data=AttachmentOut(**attachment.__dict__))

@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.main import app
+from src.modules.collaboration.infrastructure import (
+    models as collaboration_models,  # noqa: F401  (registers tables on Base.metadata)
+)
 from src.modules.identity.infrastructure import (
     models as identity_models,  # noqa: F401  (registers tables on Base.metadata)
 )

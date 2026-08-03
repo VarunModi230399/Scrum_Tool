@@ -103,3 +103,57 @@ follows [Keep a Changelog](https://keepachangelog.com/).
     polymorphic infra not yet built): milestones, comments, attachments,
     labels/tags, custom fields, time logs, and board-position ordering on
     move.
+- Collaboration module: shared comments + attachments, usable by any entity
+  type (`work_item` now, `requirement` later) via a polymorphic
+  `entity_type`/`entity_id` pair, matching DATABASE_SCHEMA.md §5. Deliberately
+  has no API routes of its own — the owning module (projects, for now) mounts
+  `/work-items/{id}/comments` and `/work-items/{id}/attachments` and calls
+  into collaboration's use cases/repos directly.
+  - Attachments use local-disk storage (`UPLOAD_DIR`, served via a `/uploads`
+    static mount) with a 25MB default limit and randomly-generated stored
+    filenames (never the client-supplied name, to avoid path traversal).
+  - `GET /api/v1/me/workspaces` (identity module): lists every workspace the
+    current user belongs to across all organizations — the endpoint the
+    frontend uses to bootstrap after login, since nothing else exposes "all
+    my workspaces."
+  - Third Alembic migration (`collaboration module: comments, attachments`).
+  - 5 new integration tests (comment/attachment lifecycle, empty-comment
+    rejection, membership-gated access); 34 total, all passing.
+- **First working frontend** (`apps/web`): register/login, a workspace
+  dashboard with project creation, and a per-project Kanban board (To Do →
+  In Progress → In Review → Blocked → Done) with work-item creation,
+  quick status changes, a detail sheet (status/priority/progress/comments),
+  and delete. JWT stored client-side with automatic refresh-and-retry on 401.
+  Verified with a scripted Playwright run through the entire flow
+  (register → create project → create task → mark done → comment → see the
+  board and progress bar update) against the dockerized stack, zero console
+  errors.
+  - Three real bugs were found and fixed via that end-to-end pass (backend
+    unit/integration tests alone hadn't caught them — nothing had exercised
+    "project progress after a real user action, seen through the UI" before):
+    1. **Project progress never rolled up.** `ProgressRollupService` cascaded
+       through the work-item tree but never touched the owning `Project` row.
+       Fixed by extending it to recompute the project's progress (weighted
+       average of *root* work items) once the cascade reaches the top; added
+       a regression test (`test_project_progress_rolls_up_from_root_work_items`)
+       covering both the "new root item" and "status change" trigger paths,
+       since creating a root item previously didn't trigger recompute either.
+    2. **`NEXT_PUBLIC_API_URL` was baked in at the wrong time.** Next.js
+       inlines `NEXT_PUBLIC_*` vars into the client bundle at *build* time;
+       the Dockerfile/compose only set it as a container *runtime* env var,
+       so the browser always called the hardcoded fallback regardless of
+       configuration. Fixed by accepting it as a Docker build `ARG` and
+       passing it via `docker-compose.yml`'s `build.args`.
+    3. **Frontend cache staleness.** `useUpdateWorkItem`/`useCreateWorkItem`/
+       `useDeleteWorkItem` invalidated the work-items list but not the
+       project query, so the project's progress bar in the UI went stale
+       after any work-item change even though the backend value was correct.
+  - `docker-compose.yml`: `CORS_ORIGINS`/`API_BASE_URL`/`FRONTEND_URL` for the
+    `api` service are now derived from the same `WEB_PORT`/`API_PORT` vars as
+    the port mappings, so remapping ports (e.g. to dodge a local collision)
+    no longer requires separately hand-editing `apps/api/.env` to match —
+    this exact mismatch caused a CORS failure during verification.
+  - README gained a warning about a footgun hit during verification: the
+    test suite's `Base.metadata.drop_all()` teardown will wipe the schema
+    out from under a `docker compose` stack if both point at the same
+    Postgres instance.

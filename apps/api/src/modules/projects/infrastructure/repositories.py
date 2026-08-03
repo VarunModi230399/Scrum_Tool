@@ -181,6 +181,14 @@ class SqlAlchemyWorkItemRepository:
         )
         return [_work_item_to_entity(m) for m in result.scalars().all()]
 
+    async def list_root_items(self, project_id: uuid.UUID) -> list[WorkItem]:
+        result = await self._session.execute(
+            select(WorkItemModel).where(
+                WorkItemModel.project_id == project_id, WorkItemModel.parent_id.is_(None)
+            )
+        )
+        return [_work_item_to_entity(m) for m in result.scalars().all()]
+
     async def list_ancestors(self, work_item: WorkItem) -> list[WorkItem]:
         ancestor_ids = [uuid.UUID(part) for part in work_item.path.split(".")[:-1]]
         if not ancestor_ids:

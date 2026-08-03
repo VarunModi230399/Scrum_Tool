@@ -161,6 +161,12 @@ class SqlAlchemyWorkspaceMembershipRepository:
         )
         return [_membership_to_entity(m) for m in result.scalars().all()]
 
+    async def list_for_user(self, user_id: UUID) -> list[WorkspaceMembership]:
+        result = await self._session.execute(
+            select(WorkspaceMembershipModel).where(WorkspaceMembershipModel.user_id == user_id)
+        )
+        return [_membership_to_entity(m) for m in result.scalars().all()]
+
     async def create(
         self, *, workspace_id: UUID, user_id: UUID, role: WorkspaceRole
     ) -> WorkspaceMembership:

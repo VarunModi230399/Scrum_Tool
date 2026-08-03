@@ -67,6 +67,14 @@ alembic upgrade head
 uvicorn src.main:app --reload
 ```
 
-Run the API test suite: `pytest -q` (spins up/tears down its own tables on
-whatever `DATABASE_URL` points to — point it at a real Postgres, e.g. via
-`docker compose up -d postgres`). Lint/typecheck: `ruff check .` and `mypy src`.
+Run the API test suite: `pytest -q`. Lint/typecheck: `ruff check .` and `mypy src`.
+
+> **Careful:** the test suite creates its tables at session start and **drops
+> all tables** at session end on whatever `DATABASE_URL` it's pointed at. If
+> you point it at the same Postgres the full `docker compose up` stack is
+> using, running `pytest` will wipe the schema out from under the running
+> `api`/`web` containers (they'll start 500ing with `relation "users" does
+> not exist` until you re-run migrations: `docker compose run --rm migrate`,
+> or just `docker compose down -v && docker compose up -d --build` for a
+> clean slate). Point tests at a separate Postgres/database, or expect to
+> re-migrate afterward.

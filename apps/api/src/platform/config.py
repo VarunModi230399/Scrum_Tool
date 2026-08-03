@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     microsoft_oauth_client_id: str | None = None
     microsoft_oauth_client_secret: str | None = None
 
+    upload_dir: str = "./uploads"
+    max_upload_size_bytes: int = 25 * 1024 * 1024  # 25 MB
+
 
 @lru_cache
 def get_settings() -> Settings:

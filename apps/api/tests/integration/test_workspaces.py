@@ -153,3 +153,21 @@ async def test_only_admin_can_rename_workspace(client: AsyncClient) -> None:
     )
     assert rename_response.status_code == 200
     assert rename_response.json()["data"]["name"] == "Renamed"
+
+
+async def test_list_my_workspaces(client: AsyncClient) -> None:
+    admin = await _register(client, "admin@example.com", "Admin User")
+
+    # register() already auto-creates one personal workspace
+    baseline = await client.get("/api/v1/me/workspaces", headers=admin["headers"])
+    assert len(baseline.json()["data"]) == 1
+
+    org_id, workspace_id = await _create_org_and_workspace(client, admin["headers"])
+
+    response = await client.get("/api/v1/me/workspaces", headers=admin["headers"])
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data) == 2
+    created = next(w for w in data if w["id"] == workspace_id)
+    assert created["organization_id"] == org_id
+    assert created["role"] == "admin"

@@ -7,6 +7,7 @@ from src.modules.identity.api.dependencies import get_current_user, require_work
 from src.modules.identity.api.schemas import (
     AddMemberRequest,
     CreateWorkspaceRequest,
+    MyWorkspaceOut,
     UpdateMemberRoleRequest,
     UpdateWorkspaceRequest,
     WorkspaceMembershipOut,
@@ -21,6 +22,7 @@ from src.modules.identity.application.use_cases import (
 )
 from src.modules.identity.domain.entities import User, WorkspaceRole
 from src.modules.identity.infrastructure.repositories import (
+    SqlAlchemyOrganizationRepository,
     SqlAlchemyUserRepository,
     SqlAlchemyWorkspaceMembershipRepository,
     SqlAlchemyWorkspaceRepository,
@@ -30,6 +32,39 @@ from src.shared_kernel.errors import ForbiddenError, NotFoundError
 from src.shared_kernel.schemas import ItemResponse, ListResponse, PageMeta
 
 router = APIRouter(tags=["workspaces"])
+
+
+@router.get("/api/v1/me/workspaces", response_model=ListResponse[MyWorkspaceOut])
+async def list_my_workspaces(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ListResponse[MyWorkspaceOut]:
+    """Every workspace the current user belongs to, across all organizations —
+    the entry point the frontend uses to bootstrap after login."""
+    membership_repo = SqlAlchemyWorkspaceMembershipRepository(db)
+    workspace_repo = SqlAlchemyWorkspaceRepository(db)
+    org_repo = SqlAlchemyOrganizationRepository(db)
+
+    memberships = await membership_repo.list_for_user(current_user.id)
+    data = []
+    for membership in memberships:
+        workspace = await workspace_repo.get_by_id(membership.workspace_id)
+        if workspace is None:
+            continue
+        organization = await org_repo.get_by_id(workspace.organization_id)
+        if organization is None:
+            continue
+        data.append(
+            MyWorkspaceOut(
+                id=workspace.id,
+                organization_id=organization.id,
+                organization_name=organization.name,
+                name=workspace.name,
+                slug=workspace.slug,
+                role=membership.role,
+            )
+        )
+    return ListResponse(data=data, meta=PageMeta(page=1, page_size=len(data), total=len(data)))
 
 
 @router.get(
